@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  # ── Flask application ────────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: ftpbackup_app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - uploads:/data/uploads
+    expose:
+      - "5000"
+    networks:
+      - internal
+
+  # ── Nginx reverse-proxy / SSL termination ─────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: ftpbackup_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_webroot:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - app
+    networks:
+      - internal
+
+  # ── Certbot (Let's Encrypt) ───────────────────────────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: ftpbackup_certbot
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    # Run manually: docker compose run certbot certonly ...
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'
+    networks:
+      - internal
+
+volumes:
+  uploads:
+  certbot_webroot:
+  letsencrypt:
+
+networks:
+  internal:
